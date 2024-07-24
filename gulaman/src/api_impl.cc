@@ -28,11 +28,13 @@ public:
       }
     }
 
-    auto & new_plugin = global::entries.plugins.emplace_back(std::make_unique<Plugin>(identifier, plugin_interface));
+    const auto next_plugin_index = global::entries.plugins.size();
+    auto & new_plugin = global::entries.plugins.emplace_back(std::make_unique<Plugin>(identifier, plugin_interface, next_plugin_index));
     if (plugin_interface) {
       plugin_interface->init();
     }
 
+    gulaman_log("Registered plugin {} with id {}", identifier, next_plugin_index);
     return new_plugin.get();
   }
 

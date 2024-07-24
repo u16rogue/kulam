@@ -4,7 +4,7 @@
 
 #include "logging.hh"
 
-extern "C" auto gulaman_get_interface(const char *) noexcept -> gulaman::sdk::IG_GulamanAPI*;
+extern "C" auto gulaman_get_interface(const char *) noexcept -> void*;
 
 static gulaman::sdk::IG_Plugin * plugself = nullptr;
 
@@ -18,7 +18,7 @@ std::unique_ptr<LoadLibraryProvider> instance_provider_ll;
 auto core_plugin_init() noexcept -> bool {
   gulaman_log("Loading core plugin...");
 
-  auto api = gulaman_get_interface("api_v_*");
+  auto api = reinterpret_cast<gulaman::sdk::IG_GulamanAPI*>(gulaman_get_interface("api_v_*"));
   if (!api) {
     gulaman_log("Core plugin cant get api interface.");
     return false;

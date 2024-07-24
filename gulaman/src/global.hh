@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #include "modules.hh"
@@ -16,8 +17,14 @@ namespace global {
     std::vector<std::unique_ptr<Plugin>> plugins;
   } inline static entries;
 
+  class ModuleInfoCache {
+    std::string name;
+    std::string path;
+  };
+
   struct {
     std::vector<int> providers;
+    std::vector<ModuleInfoCache> modules;
   } inline static cache;
 
   struct {

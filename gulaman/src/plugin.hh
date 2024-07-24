@@ -3,14 +3,25 @@
 #include <gulaman-sdk/gulaman-sdk.hh>
 #include <string>
 #include <string_view>
+#include <vector>
+
+struct Provider {
+  Provider(std::string_view name, std::string_view description, gulaman::sdk::IP_Provider * interface)
+    : name(name), description(description), interface(interface)
+  {}
+  std::string name;
+  std::string description;
+  gulaman::sdk::IP_Provider * interface;
+};
 
 class Plugin : public gulaman::sdk::IG_Plugin {
 public:
-  Plugin(std::string_view identifier, gulaman::sdk::IP_Plugin * pi)
+  Plugin(std::string_view identifier, gulaman::sdk::IP_Plugin * pi, int cache_id)
     : identifier(identifier),
-      name(identifier),
-      description(""),
-      plugin_interface(pi)
+      _cache_id(cache_id),
+      _name(identifier),
+      _description(""),
+      _plugin_interface(pi)
   {}
 
 public:
@@ -25,8 +36,12 @@ public:
 public:
   const std::string identifier;
 
+public:
+  std::vector<Provider> providers;
+
 private:
-  bool active;
-  std::string name, description;
-  gulaman::sdk::IP_Plugin * plugin_interface;
+  int _cache_id;
+  bool _active;
+  std::string _name, _description;
+  gulaman::sdk::IP_Plugin * _plugin_interface;
 };

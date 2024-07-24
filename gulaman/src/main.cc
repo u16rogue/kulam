@@ -8,6 +8,8 @@
 #include <metapp/metapp.hh>
 #include <string_view>
 #include <kitakit/kk_kit.hh>
+#include <tuple>
+#include <unordered_map>
 
 #include "logging.hh"
 #include "global.hh"
@@ -24,9 +26,37 @@ extern auto get_api(const char*) noexcept -> gulaman::sdk::IG_GulamanAPI*; // @d
   #define GULAMAN_EXPORT
 #endif
 
+struct _EntryModuleCache {
+  std::string name;
+  std::string name_hover;
+  std::string status;
+};
+static std::unordered_map<void*, _EntryModuleCache> module_entry_cache;
+static auto get_module_cache(EntryModule & module) -> std::tuple<
+                                                              std::string_view // Name
+                                                            , std::string_view // Name Hover
+                                                            , std::string_view // Status
+                                                            > {
+  if (module_entry_cache.find(&module) == module_entry_cache.end()) {
+    std::string pathstr = module.path().string();
+    const auto pos = pathstr.find_last_of("/\\");
+    if (pos == std::string::npos) {
+      return std::make_tuple("<err>", "<err>", "<err>");
+    }
+
+    module_entry_cache[&module] = { pathstr.substr(pos + 1), pathstr, "<todo>" };
+    gulaman_log("Cached {} for {}", (void*)&module, pathstr);
+  }
+
+  const auto & entry = module_entry_cache[&module];
+  return std::make_tuple(entry.name.c_str(), entry.name_hover.c_str(), entry.status.c_str());
+}
+
 static auto on_render(kitakit::EventRender & e) noexcept -> void {
   int width, height;
   e.instance.get_wsize_cache(width, height);
+
+  gulaman_log("{} {}", global::entries.plugins.size(), global::cache.providers.size());
 
   ImGui::kk_BeginFilled(e, "##menu", 0, ImGuiWindowFlags_MenuBar); {
     mpp_defer { ImGui::End(); };
@@ -38,9 +68,15 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     }
 
     ImGui::SetNextItemWidth(width * 0.2);
-    const char * items[] = { "<provider>", };
-    static int citem = 0;
-    ImGui::Combo("##provider", &citem, items, mpp::array_length(items));
+    if (ImGui::BeginCombo("##provider", "<provider>")) {
+      mpp_defer { ImGui::EndCombo(); };
+      gulaman_log("{}", global::cache.providers.size());
+      for (int i : global::cache.providers) {
+        for (const auto & provider : global::entries.plugins[(unsigned int)i]->providers) {
+          ImGui::Selectable("%s", provider.name.c_str(), false);
+        }
+      }
+    }
 
     ImGui::SameLine();
 
@@ -49,11 +85,15 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     static int citem_2 = 0;
     ImGui::Combo("##target", &citem_2, items_2, mpp::array_length(items_2));
 
-    ImGui::Text("Modules");
-    ImGui::SameLine();
-
+#if defined(ASYNC_IMPORT)
     static kitakit::AsyncTask<void> task_import;
-    if (ImGui::Button("+") && !task_import) { ImGui::OpenPopup("##openfilemodal"); task_import = []() noexcept {
+#endif
+    if (ImGui::Button("Import")
+#if defined(ASYNC_IMPORT)
+      && !task_import) { ImGui::OpenPopup("##openfilemodal"); task_import = []() noexcept {
+#else
+    ) {
+#endif
       char file[256] = {};
 #if defined(_WIN32)
       OPENFILENAMEA ofn   = {};
@@ -71,11 +111,16 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
         return;
       }
 #endif
+      gulaman_log("Flushing string cache for module entry...");
+      module_entry_cache.clear();
       global::entries.modules.emplace_back(file);
-    };} else if (bool modal = task_import; ImGui::BeginPopupModal("##openfilemodal", &modal, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) {
-      ImGui::Text("Waiting for file...");
+    }
+#if defined(ASYNC_IMPORT)
+    ;} else if (bool modal = task_import; ImGui::BeginPopupModal("##openfilemodal", &modal, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) {
+      ImGui::Text("Waiting for file dialog...");
       ImGui::EndPopup();
     }
+#endif
 
     if (ImGui::BeginTable("##modules", 4, ImGuiTableFlags_ScrollY)) {
       mpp_defer { ImGui::EndTable(); };
@@ -87,13 +132,17 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
 
       float btn_offset_precalc = 0.f;
       for (EntryModule & entry : global::entries.modules) {
+        const auto & [ name, name_hover, status ] = get_module_cache(entry);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        ImGui::Checkbox("", &entry.enabled);
+        ImGui::Checkbox("##enable_module", &entry.enabled);
         ImGui::TableNextColumn();
-        ImGui::Text("%s", entry.name().data());
+        ImGui::Text("%s", name.data());
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("%s", name_hover.data());
+        }
         ImGui::TableNextColumn();
-        ImGui::Text("%s", entry.status().data());
+        ImGui::Text("%s", status.data());
         ImGui::TableNextColumn();
         if (btn_offset_precalc == 0.f) {
           const auto avail = ImGui::GetContentRegionAvail();
@@ -107,7 +156,7 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
   }
 }
 
-GULAMAN_EXPORT auto gulaman_get_interface(const char * _name) noexcept -> gulaman::sdk::IG_GulamanAPI* {
+GULAMAN_EXPORT auto gulaman_get_interface(const char * _name) noexcept -> void* {
   const std::string_view name = _name;
   if (name.starts_with("api")) {
     return get_api(_name);

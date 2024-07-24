@@ -1,7 +1,9 @@
 #include "plugin.hh"
+#include "global.hh"
+#include "logging.hh"
 
 auto Plugin::is_active() noexcept -> bool {
-  return active;
+  return _active;
 }
 
 auto Plugin::query(const char * query, void * data, int size) noexcept -> bool {
@@ -14,28 +16,42 @@ auto Plugin::query(const char * query, void * data, int size) noexcept -> bool {
 }
 
 auto Plugin::unregister() noexcept -> bool {
-  active = false;
-  if (plugin_interface) {
-    plugin_interface->uninit();
+  _active = false;
+  if (_plugin_interface) {
+    _plugin_interface->uninit();
   }
   return true;
 }
 
 auto Plugin::set_details(const char * name, const char * description) noexcept -> bool {
   if (name) {
-    this->name = name;
+    this->_name = name;
   }
 
   if (description) {
-    this->description = description;
+    this->_description = description;
   }
 
   return name || description;
 }
 
 auto Plugin::register_provider(const char * name, const char * description, gulaman::sdk::IP_Provider * implementation) noexcept -> bool {
-  (void)name;
-  (void)description;
-  (void)implementation;
-  return false;
+  for (const auto & provider : providers) {
+    if (provider.interface == implementation) {
+      gulaman_log("Provider implementation already registered 0x{} - Rejected.", (void*)implementation);
+      return false;
+    }
+  }
+
+  providers.emplace_back(name, description, implementation);
+  gulaman_log("Registered provider {} from {}[{}]", name, this->_name, _cache_id);
+
+  for (const int i : global::cache.providers) {
+    if (i == _cache_id) {
+      return true;
+    }
+  }
+
+  global::cache.providers.emplace_back(_cache_id);
+  return true;
 }
