@@ -46,12 +46,12 @@ auto Plugin::register_provider(const char * name, const char * description, gula
   providers.emplace_back(name, description, implementation);
   gulaman_log("Registered provider {} from {}[{}]", name, this->_name, _cache_id);
 
-  for (const int i : global::cache.providers) {
+  for (const int i : global::cache::providers) {
     if (i == _cache_id) {
       return true;
     }
   }
 
-  global::cache.providers.emplace_back(_cache_id);
+  global::cache::providers.emplace_back(_cache_id);
   return true;
 }

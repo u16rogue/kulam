@@ -21,15 +21,15 @@ public:
   }
 
   virtual auto register_plugin(const char * identifier, gulaman::sdk::IP_Plugin * plugin_interface) noexcept -> gulaman::sdk::IG_Plugin* override {
-    for (const auto & plugin : global::entries.plugins) {
+    for (const auto & plugin : global::entries::plugins) {
       if (plugin->is_active() && plugin->identifier == identifier) {
         gulaman_log("Cant load plugin as identifier '{}' is already in use.", identifier);
         return nullptr;
       }
     }
 
-    const auto next_plugin_index = global::entries.plugins.size();
-    auto & new_plugin = global::entries.plugins.emplace_back(std::make_unique<Plugin>(identifier, plugin_interface, next_plugin_index));
+    const auto next_plugin_index = global::entries::plugins.size();
+    auto & new_plugin = global::entries::plugins.emplace_back(std::make_unique<Plugin>(identifier, plugin_interface, next_plugin_index));
     if (plugin_interface) {
       plugin_interface->init();
     }

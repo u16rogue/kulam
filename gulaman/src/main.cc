@@ -56,8 +56,6 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
   int width, height;
   e.instance.get_wsize_cache(width, height);
 
-  gulaman_log("{} {}", global::entries.plugins.size(), global::cache.providers.size());
-
   ImGui::kk_BeginFilled(e, "##menu", 0, ImGuiWindowFlags_MenuBar); {
     mpp_defer { ImGui::End(); };
 
@@ -68,12 +66,13 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     }
 
     ImGui::SetNextItemWidth(width * 0.2);
-    if (ImGui::BeginCombo("##provider", "<provider>")) {
+    if (ImGui::BeginCombo("##provider", global::state::active_provider ? global::state::active_provider->name.c_str() : "<select>")) {
       mpp_defer { ImGui::EndCombo(); };
-      gulaman_log("{}", global::cache.providers.size());
-      for (int i : global::cache.providers) {
-        for (const auto & provider : global::entries.plugins[(unsigned int)i]->providers) {
-          ImGui::Selectable("%s", provider.name.c_str(), false);
+      for (int i : global::cache::providers) {
+        for (auto & provider : global::entries::plugins[static_cast<mpp::u32>(i)]->providers) {
+          if (ImGui::Selectable(provider.name.c_str(), &provider == global::state::active_provider)) {
+            global::state::active_provider = &provider;
+          }
         }
       }
     }
@@ -101,7 +100,7 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
       ofn.lpstrFilter     = "Module (.bin,.dll)\0*.bin;*.dll\0All Files\0*.*\0\0";
       ofn.nMaxFile        = 128;
       ofn.lpstrTitle      = "Import module";
-      ofn.hwndOwner       = FindWindowA(NULL, global::state.title.c_str());
+      ofn.hwndOwner       = FindWindowA(NULL, global::state::title.c_str());
       ofn.lpstrFile       = file;
 
       if (!GetOpenFileNameA(&ofn)) {
@@ -113,7 +112,7 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
 #endif
       gulaman_log("Flushing string cache for module entry...");
       module_entry_cache.clear();
-      global::entries.modules.emplace_back(file);
+      global::entries::modules.emplace_back(file);
     }
 #if defined(ASYNC_IMPORT)
     ;} else if (bool modal = task_import; ImGui::BeginPopupModal("##openfilemodal", &modal, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) {
@@ -131,7 +130,7 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
       ImGui::TableHeadersRow();
 
       float btn_offset_precalc = 0.f;
-      for (EntryModule & entry : global::entries.modules) {
+      for (EntryModule & entry : global::entries::modules) {
         const auto & [ name, name_hover, status ] = get_module_cache(entry);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -192,14 +191,14 @@ GULAMAN_EXPORT auto gulaman_entry() noexcept -> int {
   if (const char * env_plugin_dir = std::getenv(env_plugin_dir_name); env_plugin_dir) {
     if (std::filesystem::exists(env_plugin_dir) && std::filesystem::is_directory(env_plugin_dir)) {
       gulaman_log("env {} detected. Overriding.", env_plugin_dir_name);
-      global::directories.plugins_dir = env_plugin_dir;
+      global::directories::plugins_dir = env_plugin_dir;
     } else {
       gulaman_log("env {} Invalid -> {}", env_plugin_dir_name, env_plugin_dir);
     }
   }
 
   for (int i = 0; i < 16; ++i) {
-    global::state.title += "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[rand() % 62];
+    global::state::title += "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[rand() % 62];
   }
 
   gulaman_log("Initializing core plugin...");
@@ -208,10 +207,10 @@ GULAMAN_EXPORT auto gulaman_entry() noexcept -> int {
   }
 
   gulaman_log("Starting render UI...");
-  kitakit::run(500, 400, global::state.title.c_str(), nullptr, on_render);
+  kitakit::run(500, 400, global::state::title.c_str(), nullptr, on_render);
 
   gulaman_log("Shutting down...");
-  for (auto & plugin : global::entries.plugins) {
+  for (auto & plugin : global::entries::plugins) {
     plugin->unregister();
   }
 
