@@ -2,8 +2,8 @@
 #include "global.hh"
 #include "logging.hh"
 
-auto Plugin::is_active() noexcept -> bool {
-  return _active;
+auto Plugin::is_registered() noexcept -> bool {
+  return _registered;
 }
 
 auto Plugin::query(const char * query, void * data, int size) noexcept -> bool {
@@ -16,7 +16,7 @@ auto Plugin::query(const char * query, void * data, int size) noexcept -> bool {
 }
 
 auto Plugin::unregister() noexcept -> bool {
-  _active = false;
+  _registered = false;
   if (_plugin_interface) {
     _plugin_interface->uninit();
   }

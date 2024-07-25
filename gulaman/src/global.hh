@@ -17,14 +17,8 @@ namespace global {
     inline std::vector<std::unique_ptr<Plugin>> plugins;
   }
 
-  class ModuleInfoCache {
-    std::string name;
-    std::string path;
-  };
-
   namespace cache {
-    inline std::vector<int> providers;
-    inline std::vector<ModuleInfoCache> modules;
+    inline std::vector<int> providers; // Indexes to entries::plugins[<cache id>]->providers
   }
 
   namespace state {

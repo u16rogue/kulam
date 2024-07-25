@@ -17,11 +17,12 @@ struct Provider {
 class Plugin : public gulaman::sdk::IG_Plugin {
 public:
   Plugin(std::string_view identifier, gulaman::sdk::IP_Plugin * pi, int cache_id)
-    : identifier(identifier),
-      _cache_id(cache_id),
-      _name(identifier),
-      _description(""),
-      _plugin_interface(pi)
+    : identifier(identifier)
+    , _cache_id(cache_id)
+    , _registered(true)
+    , _name(identifier)
+    , _description("")
+    , _plugin_interface(pi)
   {}
 
 public:
@@ -31,7 +32,7 @@ public:
   virtual auto register_provider(const char * name, const char * description, gulaman::sdk::IP_Provider * implementation) noexcept -> bool override;
 
 public:
-  auto is_active() noexcept -> bool;
+  auto is_registered() noexcept -> bool;
 
 public:
   const std::string identifier;
@@ -41,7 +42,7 @@ public:
 
 private:
   int _cache_id;
-  bool _active;
+  bool _registered;
   std::string _name, _description;
   gulaman::sdk::IP_Plugin * _plugin_interface;
 };

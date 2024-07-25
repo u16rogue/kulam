@@ -22,7 +22,7 @@ public:
 
   virtual auto register_plugin(const char * identifier, gulaman::sdk::IP_Plugin * plugin_interface) noexcept -> gulaman::sdk::IG_Plugin* override {
     for (const auto & plugin : global::entries::plugins) {
-      if (plugin->is_active() && plugin->identifier == identifier) {
+      if (plugin->is_registered() && plugin->identifier == identifier) {
         gulaman_log("Cant load plugin as identifier '{}' is already in use.", identifier);
         return nullptr;
       }
@@ -34,7 +34,7 @@ public:
       plugin_interface->init();
     }
 
-    gulaman_log("Registered plugin {} with id {}", identifier, next_plugin_index);
+    gulaman_log("Registered plugin {} with cid {}", identifier, next_plugin_index);
     return new_plugin.get();
   }
 

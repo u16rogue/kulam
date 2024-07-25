@@ -1,5 +1,5 @@
 #include <cstdlib>
-#include <errhandlingapi.h>
+#include <ctime>
 #include <filesystem>
 #include <imgui.h>
 #include <kitakit/kitakit.hh>
@@ -20,6 +20,7 @@ extern auto get_api(const char*) noexcept -> gulaman::sdk::IG_GulamanAPI*; // @d
 
 #if defined(_WIN32)
   #include <windows.h>
+  #include <processthreadsapi.h>
   #define GULAMAN_EXPORT extern "C" __attribute__((dllexport))
   auto DllMain(HMODULE, DWORD, LPVOID) -> BOOL { return TRUE; }
 #else
@@ -69,7 +70,11 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     if (ImGui::BeginCombo("##provider", global::state::active_provider ? global::state::active_provider->name.c_str() : "<select>")) {
       mpp_defer { ImGui::EndCombo(); };
       for (int i : global::cache::providers) {
-        for (auto & provider : global::entries::plugins[static_cast<mpp::u32>(i)]->providers) {
+        auto & plugin = global::entries::plugins[static_cast<mpp::u32>(i)];
+        if (!plugin->is_registered()) {
+          continue;
+        }
+        for (auto & provider : plugin->providers) {
           if (ImGui::Selectable(provider.name.c_str(), &provider == global::state::active_provider)) {
             global::state::active_provider = &provider;
           }
@@ -80,9 +85,12 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     ImGui::SameLine();
 
     ImGui::SetNextItemWidth(width * 0.75);
-    const char * items_2[] = { "<target>", };
-    static int citem_2 = 0;
-    ImGui::Combo("##target", &citem_2, items_2, mpp::array_length(items_2));
+    if (ImGui::BeginCombo("##target", []{
+                                        if (!global::state::active_provider) return "<no provider>";
+                                        return "<select>";
+                                      }())) {
+      mpp_defer { ImGui::EndCombo(); };
+    }
 
 #if defined(ASYNC_IMPORT)
     static kitakit::AsyncTask<void> task_import;
@@ -134,7 +142,9 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
         const auto & [ name, name_hover, status ] = get_module_cache(entry);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
+        ImGui::PushID(&entry);
         ImGui::Checkbox("##enable_module", &entry.enabled);
+        ImGui::PopID();
         ImGui::TableNextColumn();
         ImGui::Text("%s", name.data());
         if (ImGui::IsItemHovered()) {
@@ -197,9 +207,29 @@ GULAMAN_EXPORT auto gulaman_entry() noexcept -> int {
     }
   }
 
-  for (int i = 0; i < 16; ++i) {
-    global::state::title += "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[rand() % 62];
+  {
+    constexpr int max = 16;
+    srand((unsigned int)clock());
+    char buff[max + 1] = {};
+    for (int i = 0; i < max; ++i) {
+      buff[i] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[rand() % 62];
+    }
+    global::state::title = buff;
   }
+
+  const auto get_tid = [] {
+#if defined(_WIN32)
+    return GetThreadId(GetCurrentThread());
+#endif
+  };
+
+  gulaman_log(
+    "Setting up threads:\n"
+    "  Render: {}\n"
+    "  Tick: {}",
+    get_tid(),
+    -1
+  );
 
   gulaman_log("Initializing core plugin...");
   if (!core_plugin_init()) {
