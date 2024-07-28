@@ -8,8 +8,6 @@
 #include <metapp/metapp.hh>
 #include <string_view>
 #include <kitakit/kk_kit.hh>
-#include <tuple>
-#include <unordered_map>
 
 #include "logging.hh"
 #include "global.hh"
@@ -27,32 +25,6 @@ extern auto get_api(const char*) noexcept -> gulaman::sdk::IG_GulamanAPI*; // @d
   #define GULAMAN_EXPORT
 #endif
 
-struct _EntryModuleCache {
-  std::string name;
-  std::string name_hover;
-  std::string status;
-};
-static std::unordered_map<void*, _EntryModuleCache> module_entry_cache;
-static auto get_module_cache(EntryModule & module) -> std::tuple<
-                                                              std::string_view // Name
-                                                            , std::string_view // Name Hover
-                                                            , std::string_view // Status
-                                                            > {
-  if (module_entry_cache.find(&module) == module_entry_cache.end()) {
-    std::string pathstr = module.path().string();
-    const auto pos = pathstr.find_last_of("/\\");
-    if (pos == std::string::npos) {
-      return std::make_tuple("<err>", "<err>", "<err>");
-    }
-
-    module_entry_cache[&module] = { pathstr.substr(pos + 1), pathstr, "<todo>" };
-    gulaman_log("Cached {} for {}", (void*)&module, pathstr);
-  }
-
-  const auto & entry = module_entry_cache[&module];
-  return std::make_tuple(entry.name.c_str(), entry.name_hover.c_str(), entry.status.c_str());
-}
-
 static auto on_render(kitakit::EventRender & e) noexcept -> void {
   int width, height;
   e.instance.get_wsize_cache(width, height);
@@ -64,10 +36,13 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
       mpp_defer { ImGui::EndMenuBar(); };
       static int frame_index_indicator = 0;
       ImGui::Text("[%c]", "|/-|\\-/-\\"[frame_index_indicator = (frame_index_indicator + 1) % 9]);
+      ImGui::Separator();
     }
 
+    Provider * const active_provider = global::state::active_provider;
+
     ImGui::SetNextItemWidth(width * 0.2);
-    if (ImGui::BeginCombo("##provider", global::state::active_provider ? global::state::active_provider->name.c_str() : "<select>")) {
+    if (ImGui::BeginCombo("##provider", active_provider ? active_provider->name.c_str() : "<select>")) {
       mpp_defer { ImGui::EndCombo(); };
       for (int i : global::cache::providers) {
         auto & plugin = global::entries::plugins[static_cast<mpp::u32>(i)];
@@ -75,8 +50,8 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
           continue;
         }
         for (auto & provider : plugin->providers) {
-          if (ImGui::Selectable(provider.name.c_str(), &provider == global::state::active_provider)) {
-            global::state::active_provider = &provider;
+          if (ImGui::Selectable(provider->name.c_str(), provider.get() == active_provider)) {
+            global::state::active_provider = provider.get();
           }
         }
       }
@@ -85,11 +60,22 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
     ImGui::SameLine();
 
     ImGui::SetNextItemWidth(width * 0.75);
-    if (ImGui::BeginCombo("##target", []{
-                                        if (!global::state::active_provider) return "<no provider>";
-                                        return "<select>";
+    static std::string_view _cache_selected_target_display;
+    if (ImGui::BeginCombo("##target", [&]{
+                                        if (!active_provider) return "<no provider>";
+                                        if (active_provider->transacting) return "<loading>";
+                                        if (active_provider->target_id_selected == 0) return "<select>";
+                                        return _cache_selected_target_display.data();
                                       }())) {
       mpp_defer { ImGui::EndCombo(); };
+      if (global::state::active_provider) {
+        for (const auto & target : active_provider->targets) {
+          if (ImGui::Selectable(target.display_text.c_str(), target.id == active_provider->target_id_selected)) {
+            active_provider->target_id_selected = target.id;
+            _cache_selected_target_display = target.display_text;
+          }
+        }
+      }
     }
 
 #if defined(ASYNC_IMPORT)
@@ -118,8 +104,6 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
         return;
       }
 #endif
-      gulaman_log("Flushing string cache for module entry...");
-      module_entry_cache.clear();
       global::entries::modules.emplace_back(file);
     }
 #if defined(ASYNC_IMPORT)
@@ -139,19 +123,18 @@ static auto on_render(kitakit::EventRender & e) noexcept -> void {
 
       float btn_offset_precalc = 0.f;
       for (EntryModule & entry : global::entries::modules) {
-        const auto & [ name, name_hover, status ] = get_module_cache(entry);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::PushID(&entry);
         ImGui::Checkbox("##enable_module", &entry.enabled);
         ImGui::PopID();
         ImGui::TableNextColumn();
-        ImGui::Text("%s", name.data());
+        ImGui::Text("%s", entry.name().data());
         if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltip("%s", name_hover.data());
+          ImGui::SetTooltip("%s", entry.name_hover().data());
         }
         ImGui::TableNextColumn();
-        ImGui::Text("%s", status.data());
+        ImGui::Text("%s", entry.status().data());
         ImGui::TableNextColumn();
         if (btn_offset_precalc == 0.f) {
           const auto avail = ImGui::GetContentRegionAvail();
@@ -181,6 +164,9 @@ GULAMAN_EXPORT auto gulaman_entry() noexcept -> int {
   _wfreopen_s(&f, L"CONOUT$", L"w", stdout);
 #endif
 
+  mpp_defer {
+    gulaman_log("Shutdown.");
+  };
 
   gulaman_log(
     "Initializing...\n"
